@@ -79,7 +79,7 @@ Bake the **implementer rules** (next section) into every dispatched brief — in
 ### The PR review loop
 Each implementer opens **its own PR** back to the integration branch. You then **review each PR — and actually read the code involved**, not just the agent's summary or the green gate. Read the diff: verify correctness, that it does what the issue/plan intended, that the scope is right, and scrutinize anything the agent flagged or where it went wider than the planned files. A green gate and a confident agent report are necessary but **not sufficient** — the merge decision is yours and must be grounded in the actual changed code.
 
-If it needs changes, **dispatch a fix agent into that same worktree**; iterate until the PR is good. Only when satisfied do you **merge** (real merge commit, never squash). After merge: sync local integration branch, delete the branch, remove the worktree.
+If it needs changes, **dispatch a fix agent into that same worktree**; iterate until the PR is good. Only when satisfied do you **merge and clean up** — and the *order* matters because of worktrees (see next section): the implementer has already pushed everything, so you **remove the worktree first**, then merge with `gh pr merge --merge --delete-branch`.
 
 ### On the gate — re-gate as a backstop, not a blanket
 **The IMPLEMENTER runs the project's `GATE_CMD` to green at wrap-up — that IS the gate.** An agentic pre-commit hook may be wired (PreToolUse → gate, denies on failure), but it did NOT intercept the commits observed in orchestration sessions — a broken-test commit slipped through, and a sub-agent reported it never fired. Likely because implementers run as Agent-tool sub-agents and the interactive `PreToolUse` hook doesn't apply to their Bash calls (it gates a normal interactive session as designed — don't assume it's broken there). And release-branch PRs typically get no CI. So: **don't assume a commit was gated by the hook — especially a sub-agent's**; the implementer's own gate run is what stands in for CI.
@@ -88,10 +88,11 @@ Don't blanket re-run the full suite yourself on every PR — it's redundant when
 
 (Observed: agents can die mid-run on API/socket errors or stop early — the ones that had already opened a PR were reviewable/mergeable; one that stopped with no PR left only a dirty worktree, forcing manual cleanup. That's why the stop-and-report rule is mandatory in every brief.)
 
-### After merge — cleanup
-1. **Sync the local integration branch first:** `git checkout <integration> && git pull` so it fast-forwards to the merge commit. Skipping this leaves it behind the remote, so the next worktree gets cut from a stale HEAD.
-2. Delete the merged branch — but **only after verifying it's fully merged into the target**; STOP on git's "not yet merged to HEAD" warning.
-3. Remove its worktree (`git worktree remove <path>`).
+### Merge & cleanup — order matters because of worktrees
+The branch lives in a linked worktree, and **git refuses to delete a branch that's checked out in a worktree** (`cannot delete branch 'X' used by worktree …`). So `gh pr merge --delete-branch` would error on the local-branch step if the worktree still exists. The fix is ordering, not dropping the flag: the implementer has already pushed everything and the PR is up, so **tear the worktree down before you merge**, and then `--delete-branch` cleanly removes both branches. Sequence, every time:
+1. **Remove the worktree first:** `git worktree remove <path>`. Nothing is lost — it's all pushed — and this frees the branch so it can be deleted.
+2. **Merge with branch deletion:** `gh pr merge --merge --delete-branch` — real merge commit (never squash), and with the worktree gone `--delete-branch` cleanly removes BOTH the local and remote branch. Skipping `--delete-branch` is what let merged `origin/*` branches pile up indefinitely (they did: dozens accumulated). Verify it's fully merged first; STOP on git's "not yet merged to HEAD" warning.
+3. **Sync the local integration branch:** `git checkout <integration> && git pull --prune` so it fast-forwards to the merge commit and stale remote-tracking refs are pruned. Skipping the sync leaves it behind the remote, so the next worktree gets cut from a stale HEAD.
 4. **Close the issue yourself if the work resolved one — GitHub will NOT auto-close it.** Auto-close only fires when a PR with a `Closes #N` keyword merges into the **default branch** (`main`). Our PRs merge into the **integration branch**, so a linked issue stays open regardless of keywords — and in practice the PRs only cross-reference (`#N`) rather than use a closing keyword anyway, so no close link even exists. After merging, `gh issue close <N> --comment "Fixed in #<pr> (merged into <integration>)."` for each issue the merged work resolved. (Don't wait for the eventual integration→`main` merge to sweep them — close them now so the issue tracker reflects reality.)
 
 ---
@@ -109,7 +110,7 @@ Work only in the assigned worktree (absolute paths), match surrounding style, an
 ## Hard rules (both roles)
 
 - **⛔ Never use the Agent tool's `isolation: "worktree"` param or any auto worktree provisioner.** Make worktrees only via `~/.worktrees/setup-worktree.sh`, verify HEAD, then dispatch a plain agent. (See worktree section.)
-- **Never squash-merge.** Merge PRs with a real merge commit (`gh pr merge --merge`), never `--squash` — squashing flattens the individual commits we keep.
+- **Never squash-merge.** Merge PRs with a real merge commit (`gh pr merge --merge --delete-branch`), never `--squash` — squashing flattens the individual commits we keep. Always pass `--delete-branch` so the remote branch is removed on merge instead of accumulating — but **remove the worktree first** (see Merge & cleanup), or `--delete-branch` errors trying to delete a branch still checked out in a worktree.
 - **Do NOT rebase.** Rebasing rewrites history. Default to plain merge commits everywhere: integrating parallel worktree branches, a branch falling behind the integration branch, resolving overlap between two PRs — MERGE, never rebase. If two parallel branches touch the same file, resolve it at MERGE time (merge one, then merge the other and fix conflicts in the merge), not by rebasing one onto the other. Never instruct a sub-agent to rebase. Only rebase when there's a specific, unavoidable reason AND it's worth rewriting history — rare; when in doubt, merge.
 - **Branch from the active integration branch, not `main`.** PRs target the integration branch.
 - **Never delete a branch past git's "not merged" warning** — verify fully merged into the target first.
