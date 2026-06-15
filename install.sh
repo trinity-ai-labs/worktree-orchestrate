@@ -21,6 +21,11 @@ MODE="symlink"
 link() { # link <src> <dest>
   local src="$1" dest="$2"
   mkdir -p "$(dirname "$dest")"
+  # Clear whatever's already at dest first. A real file/dir left by a prior
+  # `--copy` install (or a hand setup) would otherwise make `ln -sfn` nest the
+  # new symlink *inside* the existing directory instead of replacing it — a
+  # silent broken install. (Plain `if` so `set -e` doesn't trip on a no-op.)
+  if [ -e "$dest" ] || [ -L "$dest" ]; then rm -rf "$dest"; fi
   if [ "$MODE" = "copy" ]; then
     cp -R "$src" "$dest"
   else

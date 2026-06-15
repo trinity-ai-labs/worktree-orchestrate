@@ -31,6 +31,8 @@ When you invoke `/orchestrate`, Claude first decides **which role it's in**:
 
 ## Prerequisites
 
+> **macOS or Linux** — `install.sh` is portable `bash` (re-runnable; cleanly converts a prior `--copy` install to symlinks). On Windows, run it under WSL.
+
 - **git** (worktrees are built in; nothing extra to install)
 - **[GitHub CLI](https://cli.github.com/)** (`gh`) authenticated: `gh auth login` — used to open/merge PRs
 - **[Claude Code](https://claude.com/claude-code)** — this is where `/orchestrate` runs
