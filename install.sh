@@ -6,7 +6,7 @@
 # Symlinks the repo's pieces into the locations Claude Code + the helper expect:
 #   bin/setup-worktree.sh      -> ~/.worktrees/setup-worktree.sh
 #   config/*.sh                -> ~/.worktrees/config/*.sh
-#   skills/orchestrate/        -> ~/.claude/skills/orchestrate/
+#   skills/orchestrate/        -> ~/.claude/skills/orchestrate/  AND  ~/.agents/skills/orchestrate/
 #
 # Symlinks (not copies) mean `git pull` in this repo updates your live tools.
 # Pass --copy to copy instead (edit the originals in the repo, re-run to sync).
@@ -14,7 +14,12 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKTREE_HOME="${WORKTREE_HOME:-$HOME/.worktrees}"
-SKILLS_HOME="${SKILLS_HOME:-$HOME/.claude/skills}"
+# Install the skill into every agent skills home: Claude Code and the generic
+# ~/.agents convention. Add more here and they all stay in sync.
+SKILL_HOMES=(
+  "${CLAUDE_SKILLS_HOME:-$HOME/.claude/skills}"
+  "${AGENTS_SKILLS_HOME:-$HOME/.agents/skills}"
+)
 MODE="symlink"
 [ "${1:-}" = "--copy" ] && MODE="copy"
 
@@ -47,12 +52,16 @@ for cfg in "$REPO"/config/*.sh; do
   link "$cfg" "$WORKTREE_HOME/config/$(basename "$cfg")"
 done
 
-# 3. The orchestrate skill
-link "$REPO/skills/orchestrate" "$SKILLS_HOME/orchestrate"
+# 3. The orchestrate skill — into every skill home
+for home in "${SKILL_HOMES[@]}"; do
+  link "$REPO/skills/orchestrate" "$home/orchestrate"
+done
 
 echo
 echo "Done. Sanity check:"
 echo "  ls -la $WORKTREE_HOME/setup-worktree.sh"
-echo "  ls -la $SKILLS_HOME/orchestrate"
+for home in "${SKILL_HOMES[@]}"; do
+  echo "  ls -la $home/orchestrate"
+done
 echo
 echo "Next: open Claude Code in your repo and try  /orchestrate  — see README.md."

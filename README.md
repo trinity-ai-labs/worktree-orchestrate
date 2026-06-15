@@ -8,7 +8,7 @@ This repo packages three things that work together:
 |---|---|---|
 | `bin/setup-worktree.sh` | `~/.worktrees/setup-worktree.sh` | Generic helper that creates a worktree, symlinks env files, installs deps |
 | `config/<project>.sh` | `~/.worktrees/config/<project>.sh` | Per-project settings the helper + skill read (gate, env files, conventions) |
-| `skills/orchestrate/` | `~/.claude/skills/orchestrate/` | The `/orchestrate` skill — the playbook Claude follows |
+| `skills/orchestrate/` | `~/.claude/skills/orchestrate/` + `~/.agents/skills/orchestrate/` | The `/orchestrate` skill — the playbook Claude follows |
 
 ---
 
@@ -48,13 +48,14 @@ cd worktree-orchestrate
 ./install.sh
 ```
 
-`install.sh` **symlinks** the pieces into place (`~/.worktrees/` and `~/.claude/skills/`), so a later `git pull` in this repo updates your live tools automatically. Use `./install.sh --copy` if you'd rather have independent copies.
+`install.sh` **symlinks** the pieces into place (`~/.worktrees/` and both skill homes — `~/.claude/skills/` and `~/.agents/skills/`), so a later `git pull` in this repo updates your live tools automatically. Use `./install.sh --copy` if you'd rather have independent copies.
 
 Verify:
 
 ```bash
 ls -la ~/.worktrees/setup-worktree.sh        # -> .../worktree-orchestrate/bin/setup-worktree.sh
 ls -la ~/.claude/skills/orchestrate          # -> .../worktree-orchestrate/skills/orchestrate
+ls -la ~/.agents/skills/orchestrate          # -> .../worktree-orchestrate/skills/orchestrate
 ```
 
 Then in Claude Code, `/orchestrate` should appear in the skills list.
