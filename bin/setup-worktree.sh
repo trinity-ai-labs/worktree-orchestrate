@@ -112,6 +112,12 @@ fi
 
 # Materialize node_modules / deps (worktrees don't share them; the gate needs them).
 if [ -n "$INSTALL_CMD" ]; then
+  # corepack-shimmed package managers (e.g. pnpm) provision the pinned version on
+  # first use and, by default, block on a [Y/n] download prompt — which has nowhere
+  # to go in this non-interactive install and hangs/fails the cold-cache run. Auto-
+  # accept so the first worktree setup warms the cache instead of stalling. Harmless
+  # when INSTALL_CMD doesn't go through corepack.
+  export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
   ( cd "$WT" && eval "$INSTALL_CMD" )
 fi
 
