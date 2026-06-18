@@ -7,8 +7,6 @@
 ENV_FILES=(
   "trinity/.env.local"
   "trinityailabs.com/.env.local"
-  "trinityailabs.com/.env.dev"
-  "trinityailabs.com/.env.prod"
   "cf/.dev.vars"
 )
 
