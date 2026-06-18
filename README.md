@@ -64,7 +64,7 @@ Then in Claude Code, `/orchestrate` should appear in the skills list.
 
 ## Setting up with Trinity
 
-The Trinity config (`config/trinity-ai-labs.sh`) ships in this repo, so `install.sh` already wired it up. It assumes your Trinity clone's directory is named `trinity-ai-labs` (the helper keys off the directory name). What it declares:
+The Trinity config (`config/trinity.sh`) ships in this repo, so `install.sh` already wired it up. It assumes your Trinity clone's directory is named `trinity` (the helper keys off the directory name). What it declares:
 
 - **ENV_FILES** — symlinks `trinity/.env.local`, the `trinityailabs.com/.env.*` files, and `cf/.dev.vars` into each worktree (you must already have these in your main checkout — get them from the team vault, they're gitignored).
 - **INSTALL_CMD** — `pnpm install --frozen-lockfile`
@@ -74,7 +74,7 @@ The Trinity config (`config/trinity-ai-labs.sh`) ships in this repo, so `install
 
 **One-time Trinity setup:**
 
-1. Clone Trinity to a directory named `trinity-ai-labs` and check out the active release branch in the main checkout (`git switch release/x.x.x`). Release/integration branches live in the **main checkout**; worktrees are only for feature/fix work.
+1. Clone Trinity to a directory named `trinity` and check out the active release branch in the main checkout (`git switch release/x.x.x`). Release/integration branches live in the **main checkout**; worktrees are only for feature/fix work.
 2. Drop the gitignored env files (`trinity/.env.local`, etc.) into the main checkout — the helper symlinks *these* into every worktree, so they only need to exist once.
 3. `pnpm install` in the main checkout once.
 4. Open Claude Code in the Trinity repo and you're ready: `/orchestrate`.
@@ -106,11 +106,11 @@ Claude codes it in a fresh worktree, simplifies, greens the gate, opens a PR tar
 ~/.worktrees/setup-worktree.sh fix/toast-position release/0.3.10
 ```
 
-Both args are **required** (no default base — integration branches roll over, so a hardcoded default goes stale). It creates `~/.worktrees/trinity-ai-labs/toast-position`, symlinks env files, and installs deps. If the base isn't a local ref yet, it tells you to `git fetch` first.
+Both args are **required** (no default base — integration branches roll over, so a hardcoded default goes stale). It creates `~/.worktrees/trinity/toast-position`, symlinks env files, and installs deps. If the base isn't a local ref yet, it tells you to `git fetch` first.
 
 > **Always verify HEAD before dispatching an agent into a worktree:**
 > ```bash
-> git -C ~/.worktrees/trinity-ai-labs/toast-position rev-parse HEAD
+> git -C ~/.worktrees/trinity/toast-position rev-parse HEAD
 > git rev-parse origin/release/0.3.10     # must match
 > ```
 > The helper doesn't verify this — a mismatch means the base is stale; fix it before any work starts.
@@ -140,7 +140,7 @@ Drop a `~/.worktrees/config/<project>.sh` (named after the repo's directory) dec
 ├── install.sh                     # symlink (or --copy) the pieces into place
 ├── bin/setup-worktree.sh          # the generic worktree helper
 ├── config/
-│   ├── trinity-ai-labs.sh         # Trinity's real config (working example)
+│   ├── trinity.sh                 # Trinity's real config (working example)
 │   └── example.sh                 # annotated template for new projects
 └── skills/orchestrate/SKILL.md    # the /orchestrate playbook
 ```
