@@ -65,7 +65,11 @@ else
   fi
   MAIN=$(dirname "$COMMON")
   PROJECT=$(basename "$MAIN")
-  WT="$WORKTREE_HOME/$PROJECT/$INPUT"
+  # setup-worktree.sh names the dir after the segment past the LAST slash
+  # (e.g. `feat/1319-foo` → `1319-foo`), so derive the leaf the same way —
+  # otherwise a full branch name resolves to a non-existent nested path.
+  LEAF="${INPUT##*/}"
+  WT="$WORKTREE_HOME/$PROJECT/$LEAF"
 fi
 
 # Normalise to absolute (strip trailing slashes etc.)
@@ -157,13 +161,14 @@ fi
 # Deduplicate and exclude self (this script's own PID)
 SELF=$$
 UNIQUE_PIDS=()
-declare -A SEEN=()
-for pid in "${PIDS[@]}"; do
-  [[ "$pid" == "$SELF" ]] && continue
-  [[ -n "${SEEN[$pid]:-}" ]] && continue
-  SEEN["$pid"]=1
-  UNIQUE_PIDS+=("$pid")
-done
+# macOS ships bash 3.2, which has no associative arrays — dedup the PID list by
+# piping through `sort -un` and dropping our own PID, instead of a SEEN map.
+# (Also guard the empty case: "${PIDS[@]}" under `set -u` is an error on 3.2.)
+if [ "${#PIDS[@]}" -gt 0 ]; then
+  while IFS= read -r pid; do
+    [ -n "$pid" ] && UNIQUE_PIDS+=("$pid")
+  done < <(printf '%s\n' "${PIDS[@]}" | grep -vx "$SELF" | sort -un)
+fi
 
 if [ "${#UNIQUE_PIDS[@]}" -eq 0 ]; then
   echo "remove-worktree: no running processes found in $WT"
