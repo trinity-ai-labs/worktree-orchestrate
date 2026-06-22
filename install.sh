@@ -41,9 +41,11 @@ link() { # link <src> <dest>
 
 echo "Installing worktree-orchestrate ($MODE) from $REPO"
 
-# 1. Helper script
+# 1. Helper scripts
 link "$REPO/bin/setup-worktree.sh" "$WORKTREE_HOME/setup-worktree.sh"
 chmod +x "$REPO/bin/setup-worktree.sh"
+link "$REPO/bin/remove-worktree.sh" "$WORKTREE_HOME/remove-worktree.sh"
+chmod +x "$REPO/bin/remove-worktree.sh"
 
 # 2. Per-project configs (one symlink per file so you can add your own later)
 mkdir -p "$WORKTREE_HOME/config"
