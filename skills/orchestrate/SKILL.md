@@ -112,14 +112,14 @@ If it needs changes, **dispatch a fix agent into that same worktree**; iterate u
 ### Transient-red window (schema-first / all-or-nothing epics)
 When a foundational change lands first — a NOT-NULL schema swap, a required interface field, a renamed module — it makes `GATE_CMD` impossible to get fully green branch-wide until every consumer migrates. A full-green gate is **unattainable mid-epic BY DESIGN**; holding implementers to it just paralyzes progress.
 
-**In that window, the per-task bar shifts:**
-- `pnpm check` (typecheck + build + lint) GREEN.
-- The task's OWN new/affected test files GREEN.
-- NO NEW failures beyond the known pre-existing baseline set.
+**In that window the bar shifts — but the COMMAND does not.** The implementer still runs the LOCKED `GATE_CMD`. **Never substitute a bare `check` / `typecheck` / `lint` / `build`** to "go lighter": those compile steps run OUTSIDE the machine-wide lock (only `GATE_CMD` and the test step take it), so a heavy `tsc`-across-the-monorepo launched standalone in parallel across worktrees is the exact box-saturation the lock exists to prevent. (The "heavy" in the gate is the test suite *and* the typecheck — a bare `check` is not the light option it looks like, and it's unlocked.) What changes is how you READ the gate's result: `GATE_CMD` exits non-zero on the pre-existing baseline failures until every consumer migrates, and that's expected, **not** a stop. The pass bar becomes:
+- `GATE_CMD` actually ran, and its compile half (typecheck + lint) is GREEN.
+- The task's OWN new/affected tests are GREEN in the output.
+- NO failures beyond the baseline SET that pre-dated this task **on its fork point** — file + test names, not a count (fixing one stale test and breaking a new one keeps the count identical but is still a regression). The absolute count drifts between tasks forked at different tips and as consumers migrate; only the per-fork SET is meaningful.
 
-**Capture the baseline once** — file names + test names of the failures that pre-date this task — and verify "no new failures" against that SET, not just a count. Fixing one stale test and breaking a new one keeps the count identical but is still a regression. Verify it CHEAPLY: run only the affected/known-red test files, **never** the whole suite repeatedly (that's the heavy gate, and the lock-saturation rule still applies).
+Don't chase a green exit, and don't loop the gate.
 
-**The full `GATE_CMD` is reserved for two moments:** quiet-branch checkpoints (fleet idle, no open PRs) where you want a confidence pulse, and **epic-completion sign-off** — once the baseline failures return to zero, run `GATE_CMD` once on a quiet branch as the definitive gate before the work flows onward.
+**Who runs the full gate, and when.** The implementer runs `GATE_CMD` **once** at wrap-up — that is its signal. The ORCHESTRATOR does **not** add its own `GATE_CMD` runs on top of a live fleet (the saturation rule), and runs a full confidence gate only at **quiet-branch checkpoints** (fleet idle, no open PRs) and the **epic-completion sign-off** — once the baseline failures return to zero, `GATE_CMD` must be fully GREEN on a quiet branch; that is the definitive gate before the work flows onward.
 
 ### Merge & cleanup — order matters because of worktrees
 The branch lives in a linked worktree, and **git refuses to delete a branch that's checked out in a worktree** (`cannot delete branch 'X' used by worktree …`). So `gh pr merge --delete-branch` would error on the local-branch step if the worktree still exists. The fix is ordering, not dropping the flag: the implementer has already pushed everything and the PR is up, so **tear the worktree down before you merge**, and then `--delete-branch` cleanly removes both branches. Sequence, every time:
