@@ -21,6 +21,15 @@ ENV_FILES=(
 # node_modules / vendor dirs, so deps must be materialized per worktree.
 INSTALL_CMD="pnpm install --frozen-lockfile"   # or: npm ci / yarn / bun install / cargo build / ...
 
+# Optional: a monorepo shared build cache (turbo / nx / bazel). Export a machine-local cache
+# dir so a fresh worktree's gate replays what another checkout already built instead of running
+# cold. The config is sourced bash, so this export reaches the install step.
+# ⚠️ CRITICAL: also put the SAME export in ~/.zshenv (NOT ~/.zshrc). The gate runner, the drain,
+# and dispatched implementer agents run in NON-interactive shells — those read ~/.zshenv only.
+# A cache var set solely in ~/.zshrc reaches your interactive terminal but NOT the fleet, so the
+# shared cache silently never applies to gated PRs (every drain runs cold). Delete if unused.
+# export TURBO_CACHE_DIR="${TURBO_CACHE_DIR:-$HOME/.cache/<project>-turbo}"
+
 # The green gate an implementer runs before opening a PR (typecheck + tests +
 # lint, whatever "ready to review" means here). The orchestrator re-runs it only
 # as a backstop, not on every PR.

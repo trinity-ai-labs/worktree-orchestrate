@@ -43,6 +43,8 @@ The worktree tooling is generic; each project declares its specifics in a bash f
 - `DOCS_BRANCH_PREFIX` / `DOCS_NOTE` — branches under this prefix skip env + install (a fast path for deps-free work like markdown).
 - `BRIEF_CONVENTIONS` — project conventions to bake into every dispatched implementer brief (framework skills, compat policy, comment style, simplify-then-check, etc.).
 
+The config is sourced bash, so it may also `export` env the tooling needs — most usefully a **shared build cache** for a monorepo (turbo/nx/bazel): `export TURBO_CACHE_DIR="$HOME/.cache/<project>-turbo"` lets a fresh worktree's gate **replay** tasks another checkout already built (near-instant on unchanged packages) instead of running cold every time. ⚠️ **A cache var must also live in `~/.zshenv`, NOT `~/.zshrc`.** The gate runner, the `DRAIN_CMD` drain, and dispatched implementer agents all run in **non-interactive** shells, which read `~/.zshenv` only — a var set solely in `~/.zshrc` reaches your interactive terminal but *not* the fleet, so the shared cache silently never applies to gated PRs and every drain runs cold. The config export covers the install step; `~/.zshenv` covers the gate. (This is a real trap we hit: the 287x cache speedup showed up in the terminal but not in a single gated worktree until the export moved to `~/.zshenv`.)
+
 A repo with no config still works — the helper makes a bare worktree (no env, no install). To onboard a new project, drop a `~/.worktrees/config/<project>.sh` declaring the keys above.
 
 ---

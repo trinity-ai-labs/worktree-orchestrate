@@ -15,6 +15,13 @@ ENV_FILES=(
 # Install command, run inside the new worktree (worktrees don't share node_modules).
 INSTALL_CMD="pnpm install --frozen-lockfile"
 
+# Shared turbo cache — machine-local, so a fresh worktree's gate REPLAYS tasks another
+# checkout already built (near-instant on unchanged packages) instead of recomputing cold.
+# This export (config is sourced bash) covers the INSTALL step. ⚠️ The GATE runner + drain +
+# dispatched agents run in NON-interactive shells, which read ~/.zshenv, NOT ~/.zshrc — so the
+# SAME line must also live in ~/.zshenv or the shared cache silently never reaches gated PRs.
+export TURBO_CACHE_DIR="${TURBO_CACHE_DIR:-$HOME/.cache/trinity-turbo}"
+
 # GATE_CMD is the HEAVY full gate: `pnpm gate` = `format && check && test`, serialized behind a
 # slim machine-wide slot (scripts/gate-slot.mjs) so only one gate runs at a time on the box. This
 # is what the RUNNER runs against a queued PR's worktree when it drains the queue — implementers do
