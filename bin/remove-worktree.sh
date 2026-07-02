@@ -191,10 +191,11 @@ else
   # be removed, but short enough to not stall the orchestrator.
   sleep 2
 
-  # SIGKILL any survivors. A SIGKILL'd node lock-holder will leave the lockdir
-  # behind, but with-test-lock.mjs's dead-holder detection (holderIsDead) will
-  # detect the stale PID on the next poll and steal the lock automatically —
-  # so no manual lock cleanup is required even in the SIGKILL path.
+  # SIGKILL any survivors. A SIGKILL'd gate process will leave its slot dir
+  # behind, but gate-slot.mjs's dead-holder detection (holderIsDead) steals the
+  # stale slot on the next acquire, and gate-runner.mjs reclaims the killed
+  # runner's in-flight ticket back onto the queue — so no manual cleanup is
+  # required even in the SIGKILL path.
   SURVIVORS=()
   for pid in "${UNIQUE_PIDS[@]}"; do
     kill -0 "$pid" 2>/dev/null && SURVIVORS+=("$pid") || true
