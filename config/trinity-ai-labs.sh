@@ -1,6 +1,6 @@
 # Per-project worktree config for trinity-ai-labs.
 # Sourced as bash by ~/.worktrees/setup-worktree.sh, and read by the orchestrator
-# (the /orchestrate skill) for GATE_CMD + BRIEF_CONVENTIONS to bake into briefs.
+# (the /orchestrate skill) for the gate/check/queue commands + BRIEF_CONVENTIONS.
 
 # Gitignored env files to symlink from the main checkout into each worktree
 # (paths relative to the repo root). Only ones that exist are linked.
@@ -15,32 +15,28 @@ ENV_FILES=(
 # Install command, run inside the new worktree (worktrees don't share node_modules).
 INSTALL_CMD="pnpm install --frozen-lockfile"
 
-# GATE_CMD is the LOCKED gate: `pnpm gate` wraps `format && check && test` in a machine-wide
-# lock (scripts/with-test-lock.mjs). `check` here is lint + typecheck (tsc --noEmit) — NOT an
-# app build; `build` (turbo build → .next) is a SEPARATE task neither check nor gate invokes,
-# so agents never build the app. The lock exists because heavy concurrent runs (monorepo tsc +
-# vitest forks) saturate the box.
-# CRUCIAL: a bare `pnpm check` / `typecheck` / `build` runs OUTSIDE the lock — only `gate` and
-# `test` take it — so launching those standalone in parallel across worktrees is the exact
-# saturation the lock prevents. A bare `check` is heavy (monorepo tsc) AND unlocked; it is NOT
-# the "light" option it looks like. The implementer's single wrap-up signal is the LOCKED
-# `pnpm gate`, never a bare check.
-# WORKTREE ROOT: `pnpm gate` and `scripts/with-test-lock.mjs` live at the monorepo ROOT, not in any
-# package. From a subpackage (`trinity/`, `cf/`, `trinityailabs.com/`, `shared/`) `pnpm gate` reports
-# "no such script" and the lock script looks absent — that means WRONG DIRECTORY: cd up to the
-# worktree root and run it there. It is NEVER licence to "decompose" the gate into a bare
-# `format && check && test` — that runs the tests UNLOCKED and defeats the whole point of the gate.
-# The orchestrator must NOT pile extra GATE_CMD runs on top of a running fleet (same saturation).
-# Backstop re-gates (agent died / branches not tested together) wait until the fleet is QUIET
-# (≤1 agent); only when quiet may you run a targeted subset.
-#
-# TRANSIENT-RED EPICS (schema-first / all-or-nothing migrations): the full gate is unattainably
-# red mid-epic BY DESIGN. Implementers STILL run the locked `pnpm gate` — what changes is how you
-# READ it: compile half (typecheck + lint) GREEN + own/affected tests GREEN + no failures beyond
-# the fork-point baseline SET (file + test names, not a count; the absolute count drifts per fork
-# and as consumers migrate). A fully GREEN gate is reserved for quiet-branch checkpoints and the
-# epic-completion sign-off.
+# GATE_CMD is the HEAVY full gate: `pnpm gate` = `format && check && test`, serialized behind a
+# slim machine-wide slot (scripts/gate-slot.mjs) so only one gate runs at a time on the box. This
+# is what the RUNNER runs against a queued PR's worktree when it drains the queue — implementers do
+# NOT run it (they enqueue it; see BRIEF_CONVENTIONS). `check` is format:check + lint + typecheck;
+# `build` (turbo build → .next) is a SEPARATE task the gate never invokes, so gating never builds
+# the app. The slot exists because concurrent full runs (monorepo tsc + vitest/workerd forks)
+# saturate the box; the runner gates one-at-a-time, and multiple orchestrators may drain safely.
 GATE_CMD="pnpm gate"
+
+# SCOPED_CHECK_CMD is the cheap, unlocked bar an implementer's commits are held to: `pnpm check` =
+# format:check + lint + typecheck (oxlint is fast; typecheck is turbo-cached) — NO build, NO test
+# suite, NO slot. The agentic pre-commit hook (.agents/hooks/pre-commit.mjs) already enforces it on
+# every agent `git commit`, so a commit that fails it is denied. This is the ENTIRE quality bar an
+# implementer personally clears; the full build+test gate runs later in the runner.
+SCOPED_CHECK_CMD="pnpm check"
+
+# How an implementer enqueues its PR for gating, and how the orchestrator drains the queue. Both
+# live at the monorepo ROOT (like `pnpm gate`). ENQUEUE_CMD drops a durable on-disk ticket after the
+# implementer opens its draft PR; DRAIN_CMD is a one-shot pass the orchestrator runs each tick to
+# gate queued PRs one-at-a-time and flip them ready (green) / comment the failure (red).
+ENQUEUE_CMD="pnpm gate:enqueue"   # --branch <b> --worktree <absPath> --pr-number <n> --pr-url <url>
+DRAIN_CMD="pnpm gate:drain"       # [--max <n>]
 
 # Branches under this prefix skip env symlinks + install: markdown + `pnpm docs:check`
 # are node:fs only, so the worktree comes up instantly.
@@ -48,4 +44,4 @@ DOCS_BRANCH_PREFIX="docs/"
 DOCS_NOTE="run 'pnpm install' by hand if the docs change touches TypeScript (e.g. registering a chapter in trinityailabs.com/lib/content/docs-structure.ts)."
 
 # Conventions to bake into every dispatched implementer brief (read by the orchestrator).
-BRIEF_CONVENTIONS="Trinity splits in two — app = Solid, sidecar = Effect. Invoke the 'effect' skill (as Step 0) for any Effect-TS code on the SIDECAR (idiomatic services/layers/error-handling), and invoke the 'solid' skill (as Step 0) for any SolidJS UI code on the APP (solid-js components/signals/stores, @solidjs/router, @tanstack/solid-query for server data, Kobalte — this is Trinity's frontend); a full-stack slice that spans both invokes both. Pre-launch, no backwards-compat: no users yet and the DB gets nuked, so build forward-only — never add migration/backfill/compat shims. Code comments explain the mechanism — no issue/PR/version/plan refs. As the last step before committing, run the /simplify skill over the changes, then run the LOCKED gate 'pnpm gate' ONCE as your wrap-up signal — in the FOREGROUND; wait for it to exit. Give it the FULL 10-minute (600000ms) Bash timeout, NOT 5 minutes: the gate is heavy (format + monorepo check + full test run) and frequently waits on the machine-wide lock behind another worktree's gate, so a 5-minute cap aborts a run that was progressing or queued fine — pass timeout=600000 on the Bash call. What the gate DOES, in one run and in this order: 'pnpm format && pnpm check && pnpm test' — format is 'prettier --write', so the gate AUTO-FORMATS all files in place FIRST, then runs check (lint+typecheck) and test on the already-formatted result. So those formatting edits were produced AND validated by the same run: do NOT re-run the gate just because it left your working tree dirty with formatting changes — pure prettier writes can't break a check/test that already passed. Instead, simply COMMIT the formatting changes as part of your change set (they're expected output of the gate, not a new problem to re-verify). A clean wrap-up is: tree ready -> gate passes -> commit (including any reformatting) -> push -> PR. Don't background/detach it: an orphaned gate keeps holding the machine-wide lock and starves the next agent. Don't loop or poll-retry it. If it sits there producing no output it is almost certainly QUEUED behind another worktree's gate waiting for the lock, NOT hung — let it wait its turn; don't kill it and don't launch a second one. Run the gate FROM THE WORKTREE ROOT: 'pnpm gate' and the 'scripts/with-test-lock.mjs' it wraps live at the monorepo ROOT, not in any package — so when you've cd'd into a subpackage (trinity/, cf/, trinityailabs.com/, shared/) to do your work, 'pnpm gate' reports 'no such script' and the lock script looks missing. That means you're one level too deep: cd up to the worktree root and run 'pnpm gate' there. A gate that won't resolve is NEVER a signal to improvise — do NOT conclude 'the gate isn't a separate script, so I'll just run pnpm format && pnpm check && pnpm test myself': decomposing it that way runs the test phase OUTSIDE the lock and defeats the entire point. Gate-not-found means WRONG DIRECTORY, go up — it is never licence to bypass the lock. NEVER substitute a bare 'pnpm check'/'typecheck'/'build': those run OUTSIDE the machine-wide lock (only 'gate' and 'test' take it), so a bare check is heavy monorepo tsc AND unlocked — running it standalone saturates the box. If the orchestrator has told you this is a transient-red epic (foundational change landed first, full-green gate unattainable mid-epic by design), STILL run 'pnpm gate' — just read its output as: compile half (typecheck+lint) GREEN + your own/affected tests GREEN + no failures beyond the fork-point baseline set (file+test names, not a count); don't chase a green exit, don't loop. A fully green gate is reserved for quiet-branch checkpoints and epic-completion sign-off."
+BRIEF_CONVENTIONS="Trinity splits in two — app = Solid, sidecar = Effect. Invoke the 'effect' skill (as Step 0) for any Effect-TS code on the SIDECAR (idiomatic services/layers/error-handling), and invoke the 'solid' skill (as Step 0) for any SolidJS UI code on the APP (solid-js components/signals/stores, @solidjs/router, @tanstack/solid-query for server data, Kobalte — this is Trinity's frontend); a full-stack slice that spans both invokes both. Pre-launch, no backwards-compat: no users yet and the DB gets nuked, so build forward-only — never add migration/backfill/compat shims. Code comments explain the mechanism — no issue/PR/version/plan refs. YOU DO NOT RUN THE FULL GATE. The heavy build+test 'pnpm gate' runs later in a runner, drained from the queue by the orchestrator — not by you. Your wrap-up is: write the whole change uncommitted, run /simplify over the full diff, THEN commit in logical blocks, push, open a DRAFT PR, and enqueue the gate — then hand back without waiting. Your commits are held only to the cheap SCOPED check 'pnpm check' (format:check + lint + typecheck — no build, no test suite), which the agentic pre-commit hook enforces on every commit; run 'pnpm format' before committing so the format:check passes (a commit that fails the scoped check is denied — fix and re-commit). To enqueue after opening your draft PR: 'pnpm gate:enqueue --branch <yourBranch> --worktree <yourWorktreeAbsPath> --pr-number <n> --pr-url <url>' (get the number/url from the 'gh pr create --draft' output). Do NOT run 'pnpm gate', do NOT wait for a gate, do NOT mark your own PR ready — the runner gates it and flips it ready (green) or comments the failure and leaves it draft (red). 'pnpm check' and 'pnpm gate:enqueue' live at the monorepo ROOT: from a subpackage (trinity/, cf/, trinityailabs.com/, shared/) they report 'no such script' — that means WRONG DIRECTORY, cd up to the worktree root; it is never licence to improvise. OVERRIDE MODE ONLY: if the orchestrator's brief explicitly says to run the full gate yourself (a foundational/cross-cutting slice, or no orchestrator is draining), then after committing+pushing run 'pnpm gate' ONCE in the FOREGROUND from the worktree root with the FULL 10-minute (600000ms) Bash timeout, flip your own PR ready on green, and do NOT enqueue. 'pnpm gate' auto-formats first (prettier --write); if it leaves formatting changes, commit them as part of your change — pure prettier writes can't break a check/test that already passed, so don't re-run it just to re-verify formatting. If told this is a transient-red epic (foundational change landed first, full-green gate unattainable mid-epic by design), read the gate as: compile half (typecheck+lint) GREEN + your own/affected tests GREEN + no failures beyond the fork-point baseline set (file+test names, not a count); don't chase a green exit, don't loop."
