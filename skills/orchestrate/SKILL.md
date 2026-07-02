@@ -19,7 +19,7 @@ Our main dev workflow: we work off an integration branch (for Trinity, `release/
 
 This is project-agnostic. The per-project specifics — which env files to symlink, the install command, the gate command, the docs fast-path, and the conventions to bake into briefs — live in a config the tooling reads (see *Per-project config* below), not in this playbook.
 
-**Default to planning for parallelization.** Given a batch of work, the first move is to decompose it into independent tasks that can run concurrently in their own worktrees — don't default to doing everything sequentially yourself. Spin up as many worktrees/branches as the work needs. Because implementers no longer run the heavy gate themselves (they enqueue it), a wide fan-out no longer serializes on a gate lock — fan out as wide as the work is genuinely independent.
+**Default to planning for parallelization.** Given a batch of work, the first move is to decompose it into independent tasks that can run concurrently in their own worktrees — don't default to doing everything sequentially yourself. Spin up as many worktrees/branches as the work needs. Because implementers don't run the heavy gate themselves (they enqueue it), a wide fan-out doesn't serialize on a gate lock — fan out as wide as the work is genuinely independent.
 
 ## First: which role are you?
 
@@ -71,21 +71,21 @@ It creates the worktree at `~/.worktrees/<project>/<branch-leaf>`, symlinks the 
 
 ---
 
-## The durable gate queue — how gating works now
+## The durable gate queue
 
-The heavy gate (`GATE_CMD` = build + full test suite) is expensive and CPU-saturating: running several concurrently across worktrees stacks builds and vitest/workerd forks until the box thrashes. The old model made every implementer run it themselves behind a machine-wide lock — a race with no ordering, so flaky sub-agents died waiting on it and stranded committed work with no PR. The new model removes the wait from the implementer entirely:
+The heavy gate (`GATE_CMD` = build + full test suite) is expensive and CPU-saturating: running several concurrently across worktrees stacks builds and vitest/workerd forks until the box thrashes. So implementers never run it — they enqueue a durable ticket and hand back, and orchestrators drain the queue and gate one at a time. This keeps the wait off the implementer entirely and makes a mid-flight death impossible to lose work to:
 
 - **Implementers never run the full gate.** They get their code to a cheap **scoped check** (format-check + lint + typecheck; the pre-commit hook enforces this on every commit), commit, push, open a **draft PR**, then **enqueue** a durable gate request (`ENQUEUE_CMD`) and hand back. The work is pushed and the PR is open before the ticket exists, so an implementer death after enqueue strands nothing — worst case the work sits as a visible draft PR.
 - **Orchestrators drain the queue.** On each tick a runner (`DRAIN_CMD`) claims a queued ticket, runs `GATE_CMD` **one at a time** in that ticket's worktree behind a slim machine-wide slot, then flips the PR ready (green) or comments the failure and leaves it draft (red). Multiple orchestrators can drain the same queue safely: every state transition is an atomic rename that exactly one runner wins, and a runner that dies mid-gate has its in-flight ticket reclaimed and re-gated (the gate is idempotent).
 
-The consequences ripple through everything below: there is no gate lock for implementers to wait on, no thundering herd, no pacing dispatch to a freeing lock, no "clear the strangling orphan." Fan out freely; drain steadily; the queue + draft PRs make lost work structurally impossible.
+The consequences ripple through everything below: there's no gate lock for implementers to wait on, no thundering herd of concurrent gates, and no way for a dying agent to strand committed work. Fan out freely; drain steadily; the queue + draft PRs make lost work structurally impossible.
 
 ---
 
 ## Orchestrator
 
 ### Dispatch
-Decompose the batch into independent tasks. For each: create + **verify** a worktree (above), then **dispatch a plain implementer sub-agent** (no `isolation`) pointed at that worktree path — in parallel whenever the tasks are independent. Spin up as many worktrees/branches as the work needs; the gate no longer bottlenecks fan-out (implementers enqueue rather than gate).
+Decompose the batch into independent tasks. For each: create + **verify** a worktree (above), then **dispatch a plain implementer sub-agent** (no `isolation`) pointed at that worktree path — in parallel whenever the tasks are independent. Spin up as many worktrees/branches as the work needs; the gate doesn't bottleneck fan-out (implementers enqueue rather than gate).
 
 **Pick the model tier per task — match cost to difficulty.** Pass `model: "sonnet"` to the Agent tool for the *bulk* of implementer dispatches: well-scoped, mechanical, or moderate work (wiring, UI from a clear spec, a route/op that mirrors an existing one, tests, a refactor with a known shape). Reserve `model: "opus"` for genuinely HARD slices: subtle algorithms, ambiguous or design-heavy work, tricky concurrency/lifecycle, security-sensitive code, or large cross-cutting changes where a wrong approach is expensive to unwind. When unsure, **start Sonnet** — a Sonnet PR you have to redirect is cheaper than Opus on routine work; escalate to Opus only if the task proves harder than scoped. Trade-off: the easier the model, the **more explicit the brief** must be — exact files, patterns to copy, hard do-not-touch boundaries, research-first steps. Clarity substitutes for model strength, so a Sonnet brief should read as near-deterministic steps, not "figure it out."
 
