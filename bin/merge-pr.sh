@@ -90,7 +90,30 @@ if [ "$CUR" != "$INTEGRATION" ]; then
   echo "merge-pr: main checkout is on '$CUR'; switching to '$INTEGRATION' ..."
   git -C "$MAIN" checkout "$INTEGRATION"
 fi
-echo "merge-pr: syncing local '$INTEGRATION' to the merged tip ..."
-git -C "$MAIN" pull --prune --ff-only
 
-echo "merge-pr: done — PR #$PR merged, worktree removed, local '$INTEGRATION' synced to $(git -C "$MAIN" rev-parse --short HEAD)."
+# `gh pr merge` returns before GitHub is guaranteed to serve the new tip, so a pull
+# fired immediately can fast-forward to nothing ("Already up to date") and silently
+# leave the branch on the PRE-merge commit — while a `rev-parse HEAD` in the done-
+# message still prints a sha and reads as "synced." That is the "said synced, wasn't"
+# bug. So: poll-fetch until the remote actually carries the merge commit, fast-forward
+# each round, and VERIFY the local branch truly reached the merged tip. The message is
+# never proof; the ref-equality check below is — and on failure we die loudly, never lie.
+MERGE_OID=$( cd "$MAIN" && gh pr view "$PR" --json mergeCommit -q '.mergeCommit.oid' 2>/dev/null || true )
+echo "merge-pr: syncing local '$INTEGRATION' to the merged tip ..."
+synced=""
+for attempt in 1 2 3 4 5 6; do
+  git -C "$MAIN" fetch --prune origin >/dev/null 2>&1 || true
+  git -C "$MAIN" merge --ff-only "origin/$INTEGRATION" >/dev/null 2>&1 || true
+  LOCAL=$(git -C "$MAIN" rev-parse "$INTEGRATION")
+  REMOTE=$(git -C "$MAIN" rev-parse "origin/$INTEGRATION")
+  if [ "$LOCAL" = "$REMOTE" ] && { [ -z "$MERGE_OID" ] || \
+       git -C "$MAIN" merge-base --is-ancestor "$MERGE_OID" "$INTEGRATION" 2>/dev/null; }; then
+    synced=1
+    break
+  fi
+  echo "merge-pr: remote not serving the merge yet (attempt $attempt/6) — waiting ..."
+  sleep 2
+done
+[ -n "$synced" ] || die "local '$INTEGRATION' did NOT reach the merged tip (merge commit ${MERGE_OID:-unknown} still absent after retries) — SYNC FAILED; do NOT cut new worktrees off '$INTEGRATION' until this is resolved."
+
+echo "merge-pr: done — PR #$PR merged, worktree removed, local '$INTEGRATION' synced to $(git -C "$MAIN" rev-parse --short "$INTEGRATION")."
