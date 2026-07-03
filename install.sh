@@ -46,6 +46,8 @@ link "$REPO/bin/setup-worktree.sh" "$WORKTREE_HOME/setup-worktree.sh"
 chmod +x "$REPO/bin/setup-worktree.sh"
 link "$REPO/bin/remove-worktree.sh" "$WORKTREE_HOME/remove-worktree.sh"
 chmod +x "$REPO/bin/remove-worktree.sh"
+link "$REPO/bin/merge-pr.sh" "$WORKTREE_HOME/merge-pr.sh"
+chmod +x "$REPO/bin/merge-pr.sh"
 
 # 2. Per-project configs (one symlink per file so you can add your own later)
 mkdir -p "$WORKTREE_HOME/config"

@@ -7,6 +7,8 @@ This repo packages three things that work together:
 | Piece | Lives at (after install) | What it does |
 |---|---|---|
 | `bin/setup-worktree.sh` | `~/.worktrees/setup-worktree.sh` | Generic helper that creates a worktree, symlinks env files, installs deps |
+| `bin/merge-pr.sh` | `~/.worktrees/merge-pr.sh` | Atomic close-out: tear down the worktree, real merge commit, fast-forward the local integration branch (so the post-merge sync can't be dropped) |
+| `bin/remove-worktree.sh` | `~/.worktrees/remove-worktree.sh` | Safely tear down a worktree, killing processes rooted in it first |
 | `config/<project>.sh` | `~/.worktrees/config/<project>.sh` | Per-project settings the helper + skill read (gate, env files, conventions) |
 | `skills/orchestrate/` | `~/.claude/skills/orchestrate/` + `~/.agents/skills/orchestrate/` | The `/orchestrate` skill — the playbook Claude follows |
 
