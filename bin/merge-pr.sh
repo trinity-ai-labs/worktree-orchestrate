@@ -64,6 +64,29 @@ HEAD_BRANCH=$(pr_field headRefName)
 
 echo "merge-pr: PR #$PR  state=$STATE  base=$INTEGRATION  head=$HEAD_BRANCH  main=$MAIN"
 
+# --- 0. Wrong-repo guard ---------------------------------------------------------
+# The repo is resolved from cwd/REPO, so a shell sitting in a DIFFERENT repo's
+# checkout makes every step below operate on that repo — same-numbered PRs exist
+# everywhere, so the gh calls above still "succeed" and nothing else would catch
+# it. Verify PR #$PR actually belongs to this working set before touching anything.
+LEAF="${HEAD_BRANCH##*/}"
+PROJECT=$(basename "$MAIN")
+if [ "$STATE" = "MERGED" ]; then
+  # Idempotent-rerun case: finishing a half-done close-out implies SOME local
+  # residue — the worktree or the local head branch. Neither existing means
+  # there is nothing to close out here: almost certainly the wrong repo.
+  if [ ! -d "$WORKTREE_HOME/$PROJECT/$LEAF" ] \
+     && ! git -C "$MAIN" show-ref --verify --quiet "refs/heads/$HEAD_BRANCH" \
+     && [ "${MERGE_PR_FORCE:-}" != "1" ]; then
+    die "PR #$PR is already MERGED and neither a worktree ($WORKTREE_HOME/$PROJECT/$LEAF) nor a local branch '$HEAD_BRANCH' exists in $MAIN — nothing to close out here. WRONG REPO? cd into the intended repo and re-run (or MERGE_PR_FORCE=1 to run teardown+sync here anyway)."
+  fi
+else
+  git -C "$MAIN" show-ref --verify --quiet "refs/heads/$HEAD_BRANCH" \
+    || git -C "$MAIN" show-ref --verify --quiet "refs/remotes/origin/$HEAD_BRANCH" \
+    || { git -C "$MAIN" fetch --prune origin >/dev/null 2>&1 && git -C "$MAIN" show-ref --verify --quiet "refs/remotes/origin/$HEAD_BRANCH"; } \
+    || die "PR #$PR's head branch '$HEAD_BRANCH' is unknown in $MAIN (not local, not on origin) — WRONG REPO? The repo is resolved from cwd/REPO; cd into the intended repo and re-run."
+fi
+
 # --- 1. Remove the head branch's worktree FIRST --------------------------------
 # So `--delete-branch` can remove the local branch. remove-worktree.sh is
 # idempotent (no-ops if the worktree is already gone) and derives the worktree
