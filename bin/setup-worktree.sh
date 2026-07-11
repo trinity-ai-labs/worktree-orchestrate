@@ -102,6 +102,15 @@ if [ "$DOCS_MODE" -eq 1 ]; then
   if [ -e "$MAIN/node_modules" ] && [ ! -e "$WT/node_modules" ]; then
     ln -sfn "$MAIN/node_modules" "$WT/node_modules"
     LINKED_NM=1
+    # A repo's `.gitignore` usually ignores `node_modules/` (directories only),
+    # which does NOT match a node_modules *symlink* — so without help it'd show
+    # as untracked and a `git add -A` could stage a broken link into the repo.
+    # Exclude it locally (append to git's own exclude file, idempotent).
+    EXCLUDE="$(git -C "$WT" rev-parse --git-path info/exclude 2>/dev/null || true)"
+    if [ -n "$EXCLUDE" ]; then
+      mkdir -p "$(dirname "$EXCLUDE")"
+      grep -qxF '/node_modules' "$EXCLUDE" 2>/dev/null || echo '/node_modules' >>"$EXCLUDE"
+    fi
   fi
   echo "READY: $WT (branch $BRANCH off $BASE)"
   if [ "$LINKED_NM" -eq 1 ]; then
