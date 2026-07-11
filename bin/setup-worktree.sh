@@ -91,10 +91,24 @@ else
   git -C "$MAIN" worktree add -b "$BRANCH" "$WT" "$BASE"
 fi
 
-# Docs mode: skip env symlinks + install — markdown work needs neither.
+# Docs mode: skip env symlinks + the heavy install. Markdown checks (docs:check)
+# are node:fs-only and need nothing, but formatting markdown still needs the
+# formatter (prettier lives in node_modules). Symlinking the main checkout's
+# node_modules is instant (no copy, no install) and lets the worktree resolve
+# `node_modules/.bin/prettier` without a full install. Docs work only READS these
+# deps, so sharing them is safe; never run `pnpm install` against this symlink.
 if [ "$DOCS_MODE" -eq 1 ]; then
+  LINKED_NM=0
+  if [ -e "$MAIN/node_modules" ] && [ ! -e "$WT/node_modules" ]; then
+    ln -sfn "$MAIN/node_modules" "$WT/node_modules"
+    LINKED_NM=1
+  fi
   echo "READY: $WT (branch $BRANCH off $BASE)"
-  echo "  docs mode: skipped env symlinks + install."
+  if [ "$LINKED_NM" -eq 1 ]; then
+    echo "  docs mode: skipped env symlinks + install; symlinked node_modules so formatters run."
+  else
+    echo "  docs mode: skipped env symlinks + install."
+  fi
   [ -n "$DOCS_NOTE" ] && echo "  $DOCS_NOTE"
   exit 0
 fi
