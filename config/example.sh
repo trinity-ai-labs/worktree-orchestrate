@@ -35,11 +35,6 @@ INSTALL_CMD="pnpm install --frozen-lockfile"   # or: npm ci / yarn / bun install
 # as a backstop, not on every PR.
 GATE_CMD="pnpm check && pnpm test"
 
-# Branches under this prefix take a FAST PATH: env symlinks + install are
-# skipped, so deps-free work (markdown, config) comes up instantly. Optional.
-DOCS_BRANCH_PREFIX="docs/"
-DOCS_NOTE="run install by hand if a docs branch happens to touch code."
-
 # Conventions baked into every dispatched implementer brief (read by the
 # orchestrator). Put framework rules, compat policy, comment style, and the
 # simplify-then-gate ritual here so every sub-agent follows house style.
